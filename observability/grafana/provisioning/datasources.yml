@@ -1,0 +1,80 @@
+# ============================================================
+# Grafana Datasource Provisioning
+# ============================================================
+apiVersion: 1
+
+datasources:
+  # Prometheus (Metrics)
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "30s"
+      httpMethod: POST
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: jaeger
+    version: 1
+
+  # Loki (Logs)
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 5000
+      derivedFields:
+        - datasourceName: Jaeger
+          datasourceUid: jaeger
+          matcherRegex: "trace_id=(\\w+)"
+          matcherType: regex
+          name: TraceID
+          url: "$${__value.raw}"
+    version: 1
+
+  # Jaeger (Traces)
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    uid: jaeger
+    url: http://jaeger:16686
+    editable: true
+    jsonData:
+      tracesToLogsV2:
+        customQuery: true
+        datasourceUid: loki
+        filterBySpanID: false
+        filterByTraceID: true
+        query: '{service="${__span.tags.service.name}"} | trace_id="${__span.traceID}"'
+        tags:
+          - key: service.name
+            value: service
+      nodeGraph:
+        enabled: true
+    version: 1
+
+  # PostgreSQL (for ad-hoc queries via Grafana)
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    uid: postgresql
+    url: postgres:5432
+    user: fullstack
+    database: fullstack
+    secureJsonData:
+      password: fullstack_secret
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    editable: true
+    version: 1
+
+deleteDatasources: []

@@ -1,0 +1,109 @@
+# ============================================================
+# Vegeta Targets - FullStack API Load Test
+# ============================================================
+#
+# 使用方式:
+#   vegeta attack -targets=tests/load/vegeta.txt -duration=60s -rate=50 | vegeta report
+#   vegeta attack -targets=tests/load/vegeta.txt -duration=60s -rate=50 | vegeta plot > plot.html
+#
+# 所有请求自动注入 X-Tenant-ID Header 模拟多租户场景
+# ============================================================
+
+# ----------------------------------------------------------
+# User Service - GET /api/v1/users
+# ----------------------------------------------------------
+GET http://localhost:8080/api/v1/users?page=1&limit=20
+X-Tenant-ID: tenant-001
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users?page=1&limit=20
+X-Tenant-ID: tenant-002
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users?page=2&limit=20
+X-Tenant-ID: tenant-003
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users?page=1&limit=50
+X-Tenant-ID: tenant-004
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users?page=1&limit=20
+X-Tenant-ID: tenant-005
+Content-Type: application/json
+Accept: application/json
+
+# ----------------------------------------------------------
+# User Service - GET /api/v1/users/:id
+# ----------------------------------------------------------
+GET http://localhost:8080/api/v1/users/1
+X-Tenant-ID: tenant-001
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users/2
+X-Tenant-ID: tenant-002
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/users/42
+X-Tenant-ID: tenant-003
+Content-Type: application/json
+Accept: application/json
+
+# ----------------------------------------------------------
+# Order Service - GET /api/v1/orders
+# ----------------------------------------------------------
+GET http://localhost:8080/api/v1/orders?page=1&limit=20
+X-Tenant-ID: tenant-001
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/orders?page=1&limit=20
+X-Tenant-ID: tenant-002
+Content-Type: application/json
+Accept: application/json
+
+GET http://localhost:8080/api/v1/orders?status=pending&page=1&limit=20
+X-Tenant-ID: tenant-003
+Content-Type: application/json
+Accept: application/json
+
+# ----------------------------------------------------------
+# AI Service - POST /api/v1/ai/chat
+# ----------------------------------------------------------
+POST http://localhost:8080/api/v1/ai/chat
+X-Tenant-ID: tenant-001
+Content-Type: application/json
+Accept: application/json
+@tests/load/payloads/ai_chat_simple.json
+
+# ----------------------------------------------------------
+# Gateway - Health Check
+# ----------------------------------------------------------
+GET http://localhost:8080/health
+X-Tenant-ID: tenant-001
+Accept: application/json
+
+GET http://localhost:8080/health
+X-Tenant-ID: tenant-003
+Accept: application/json
+
+# ----------------------------------------------------------
+# Metrics endpoints (Prometheus scrape target)
+# ----------------------------------------------------------
+GET http://localhost:8080/metrics
+Accept: text/plain
+
+GET http://localhost:8081/metrics
+Accept: text/plain
+
+GET http://localhost:8082/metrics
+Accept: text/plain
+
+GET http://localhost:8083/metrics
+Accept: text/plain

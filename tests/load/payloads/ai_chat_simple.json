@@ -1,0 +1,7 @@
+{
+  "message": "Hello, introduce yourself briefly.",
+  "context": {
+    "session_id": "load-test-session-001",
+    "language": "zh-CN"
+  }
+}

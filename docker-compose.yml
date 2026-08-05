@@ -1,0 +1,136 @@
+# ============================================================
+# MicroHub - 微服务治理平台 Docker Compose
+# 架构：api-server (Go单体) + MySQL + Redis + 可观测性组件
+# ============================================================
+version: "3.9"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 20s
+
+services:
+  # ==========================================================
+  # 核心服务
+  # ==========================================================
+
+  mysql:
+    image: mysql:8-oracle
+    container_name: microhub-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: microhub
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    command: --default-authentication-plugin=caching_sha2_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      <<: *healthcheck-defaults
+    restart: unless-stopped
+    networks:
+      - microhub-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: microhub-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - microhub-net
+
+  api-server:
+    build:
+      context: ./api-server
+      dockerfile: Dockerfile
+    container_name: microhub-api-server
+    environment:
+      PROMETHEUS_URL: http://otel-lgtm:9090
+      JAEGER_URL: http://jaeger:16686
+      LOKI_URL: http://otel-lgtm:3100
+      JWT_SECRET: microhub-jwt-secret-2026
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      <<: *healthcheck-defaults
+    restart: unless-stopped
+    networks:
+      - microhub-net
+
+  # ==========================================================
+  # 可观测性组件（可选，启动后 api-server 自动切换到真实数据源）
+  # ==========================================================
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: microhub-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_VALUE: /badger/data
+      BADGER_DIRECTORY_KEY: /badger/key
+    volumes:
+      - jaeger-badger:/badger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269"]
+      <<: *healthcheck-defaults
+    restart: unless-stopped
+    networks:
+      - microhub-net
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: microhub-otel-lgtm
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - otel-lgtm-data:/data
+    ports:
+      - "3000:3000"     # Grafana
+      - "9090:9090"     # Prometheus（api-server 检测可达后拉真实指标）
+      - "3100:3100"     # Loki（api-server 检测可达后拉真实日志）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      <<: *healthcheck-defaults
+    restart: unless-stopped
+    networks:
+      - microhub-net
+
+volumes:
+  mysql-data:
+    name: microhub-mysql-data
+  redis-data:
+    name: microhub-redis-data
+  jaeger-badger:
+    name: microhub-jaeger-badger
+  otel-lgtm-data:
+    name: microhub-otel-lgtm-data
+
+networks:
+  microhub-net:
+    name: microhub-net
+    driver: bridge
